@@ -1,15 +1,19 @@
 package ec.edu.ups.icc.fundamentos01.users.dto;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Size;
+
 public class PartialUpdateUserDto {
 
+    @Size(min = 3, max = 150)
     private String name;
+
+    @Email
     private String email;
 
-    public PartialUpdateUserDto() {
-    }
+    public PartialUpdateUserDto() {}
 
-    public PartialUpdateUserDto(String name,
-                                String email) {
+    public PartialUpdateUserDto(String name, String email) {
         this.name = name;
         this.email = email;
     }

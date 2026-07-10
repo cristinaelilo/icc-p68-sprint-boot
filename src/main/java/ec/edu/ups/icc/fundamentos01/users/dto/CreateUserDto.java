@@ -1,17 +1,27 @@
 package ec.edu.ups.icc.fundamentos01.users.dto;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 public class CreateUserDto {
 
+    @NotBlank(message = "Nombre obligatorio")
+    @Size(min = 3, max = 150)
     private String name;
+
+    @NotBlank(message = "Email obligatorio")
+    @Email
     private String email;
+
+    @NotBlank(message = "Password obligatorio")
+    @Size(min = 8, message = "Mínimo 8 caracteres")
     private String password;
 
     public CreateUserDto() {
     }
 
-    public CreateUserDto(String name,
-                         String email,
-                         String password) {
+    public CreateUserDto(String name, String email, String password) {
         this.name = name;
         this.email = email;
         this.password = password;

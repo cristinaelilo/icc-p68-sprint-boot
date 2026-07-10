@@ -1,15 +1,19 @@
 package ec.edu.ups.icc.fundamentos01.users.dto;
 
+import jakarta.validation.constraints.*;
+
 public class UpdateUserDto {
 
+    @NotBlank
     private String name;
+
+    @NotBlank
+    @Email
     private String email;
 
-    public UpdateUserDto() {
-    }
+    public UpdateUserDto() {}
 
-    public UpdateUserDto(String name,
-                         String email) {
+    public UpdateUserDto(String name, String email) {
         this.name = name;
         this.email = email;
     }

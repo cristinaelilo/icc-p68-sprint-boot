@@ -7,72 +7,35 @@ public class UserModel {
     private Long id;
     private String name;
     private String email;
-    private LocalDateTime createdAt;
     private String password;
     private String passwordHash;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private boolean deleted;
 
-    public UserModel() {
-    }
+    // GETTERS Y SETTERS
 
-    public UserModel(Long id,
-                     String name,
-                     String email,
-                     LocalDateTime createdAt,
-                     String password,
-                     String passwordHash) {
-        this.id = id;
-        this.name = name;
-        this.email = email;
-        this.createdAt = createdAt;
-        this.password = password;
-        this.passwordHash = passwordHash;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public Long getId() {
-        return id;
-    }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
 
-    public String getName() {
-        return name;
-    }
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    public String getPasswordHash() { return passwordHash; }
+    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
 
-    public String getEmail() {
-        return email;
-    }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public String getPasswordHash() {
-        return passwordHash;
-    }
-
-    public void setPasswordHash(String passwordHash) {
-        this.passwordHash = passwordHash;
-    }
+    public boolean isDeleted() { return deleted; }
+    public void setDeleted(boolean deleted) { this.deleted = deleted; }
 }

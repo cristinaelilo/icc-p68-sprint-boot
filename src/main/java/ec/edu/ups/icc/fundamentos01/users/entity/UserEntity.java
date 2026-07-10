@@ -1,39 +1,44 @@
 package ec.edu.ups.icc.fundamentos01.users.entity;
 
-import java.time.LocalDateTime;
-import jakarta.persistenc.*;
+import java.util.HashSet;
+import java.util.Set;
+
+import ec.edu.ups.icc.fundamentos01.core.entities.BaseEntity;
+import ec.edu.ups.icc.fundamentos01.security.entities.RoleEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "users")
-public class UserEntity {
+public class UserEntity extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
+    @Column(nullable = false, length = 150)
     private String name;
+
+    @Column(nullable = false, unique = true, length = 150)
     private String email;
+
+    @Column(nullable = false)
     private String passwordHash;
 
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private boolean deleted;
-
-    @PrePersist
-    public void prePersist() {
-        this.createdAt = LocalDateTime.now();
-        this.deleted = false;
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    // GETTERS Y SETTERS
-
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    /*
+     * Relación ManyToMany con Roles.
+     *
+     * fetch = EAGER: Spring Security necesita los roles
+     * disponibles inmediatamente al autenticar.
+     */
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "user_roles",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
+    )
+    private Set<RoleEntity> roles = new HashSet<>();
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -44,12 +49,6 @@ public class UserEntity {
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-
-    public boolean isDeleted() { return deleted; }
-    public void setDeleted(boolean deleted) { this.deleted = deleted; }
+    public Set<RoleEntity> getRoles() { return roles; }
+    public void setRoles(Set<RoleEntity> roles) { this.roles = roles; }
 }
