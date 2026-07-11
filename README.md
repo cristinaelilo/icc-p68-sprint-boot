@@ -436,9 +436,13 @@ GET /products → el producto eliminado NO aparece.
 
 ## CRUD de productos (Bruno)
 ![Bruno Requests](/src/assets/get-practica06.png)
+
 ![Bruno Requests](/src/assets/get-id-practica06.png)
+
 ![Bruno Requests](/src/assets/post-practica06.png)
+
 ![Bruno Requests](/src/assets/patch-practica06.png)
+
 ![Bruno Requests](/src/assets/put-practica06.png)
 
 Esta captura muestra el funcionamiento completo del CRUD de productos (crear, listar, actualizar y eliminar).
@@ -482,13 +486,7 @@ API funcional, validación de datos, CRUD completo, soft delete y arquitectura e
 
 # Práctica 7 - Manejo Global de Errores y Excepciones
 
-## Asignatura
-
-Programación y Plataformas Web
-
-## Tema
-
-Framework Backend: Spring Boot - Control Global de Errores y Excepciones
+---
 
 ## Objetivo
 
@@ -670,9 +668,310 @@ La API responde correctamente con los siguientes códigos HTTP:
 
 -----------------------------------------------------------------------------------------------
 
-# Práctica 8 ()
+## Práctica 8 - Soft Delete
+
+## Descripción
+
+En esta práctica se implementó el borrado lógico (Soft Delete) para los productos de la API REST. En lugar de eliminar físicamente un registro de la base de datos, se actualiza el campo `deleted` a `true`, permitiendo conservar la información para futuras consultas o auditorías.
+
+---
+
+## Objetivos
+
+- Implementar el borrado lógico de productos.
+- Evitar la eliminación física de registros.
+- Ocultar los productos eliminados en las consultas.
+- Mantener la integridad de la información almacenada.
+
+---
+
+## Funcionalidades implementadas
+
+- Eliminación lógica de productos.
+- Consulta únicamente de productos activos (`deleted = false`).
+- Búsqueda de productos por ID ignorando registros eliminados.
+- Búsqueda por nombre ignorando registros eliminados.
+- Consulta de productos por usuario.
+- Consulta de productos por categoría.
+- Exclusión automática de productos eliminados en todas las consultas.
+
+---
+
+## Endpoints implementados
+
+### Obtener todos los productos activos
+
+```http
+GET /api/products
+```
+
+---
+
+### Obtener un producto por ID
+
+```http
+GET /api/products/{id}
+```
+
+Ejemplo
+
+```http
+GET /api/products/1
+```
+
+---
+
+### Crear un producto
+
+```http
+POST /api/products
+```
+
+Ejemplo
+
+```json
+{
+  "name": "Laptop Lenovo",
+  "price": 1200.50,
+  "stock": 10,
+  "ownerId": 1,
+  "categoryIds": [1,2]
+}
+```
+
+---
+
+### Actualizar un producto
+
+```http
+PUT /api/products/{id}
+```
+
+---
+
+### Eliminar un producto (Soft Delete)
+
+```http
+DELETE /api/products/{id}
+```
+
+El producto no se elimina de la base de datos; únicamente se actualiza el campo:
+
+```text
+deleted = true
+```
+
+---
+
+## Repositorio
+
+Se implementaron nuevos métodos para trabajar únicamente con productos activos:
+
+- `findByDeletedFalse()`
+- `findByIdAndDeletedFalse()`
+- `findByNameIgnoreCaseAndDeletedFalse()`
+- `findByOwner_IdAndDeletedFalse()`
+- `findByCategoryIdAndDeletedFalse()`
+
+---
+
+## Tecnologías utilizadas
+
+- Java 21
+- Spring Boot
+- Spring Data JPA
+- Hibernate
+- PostgreSQL
+- Maven
+- Jakarta Validation
+
+---
+
+## Evidencias
+
+### Antes del borrado
+
+Se consulta el listado de productos activos mediante:
+
+```http
+GET /api/products
+```
+![Productos](/src/assets/productos08.png)
+
+---
+
+### Eliminación lógica
+
+Se ejecuta:
+
+```http
+DELETE /api/products/{id}
+```
+
+![Delete](/src/assets/Delete08.png)
+
+---
+
+### Verificación
+
+Al consultar nuevamente los productos, el registro eliminado ya no aparece en la respuesta porque el sistema únicamente devuelve productos con:
+
+```text
+deleted = false
+```
+
+En la base de datos el registro permanece almacenado con:
+
+```text
+deleted = true
+```
+
+![Base de datos](/src/assets/BD08.png)
+
+---
+
+## Resultado
+
+Se implementó correctamente el mecanismo de Soft Delete, permitiendo conservar los registros en la base de datos mientras se excluyen automáticamente de todas las consultas realizadas por la aplicación.
 
 -----------------------------------------------------------------------------------------------
+
+# Práctica 9 - Filtros Dinámicos
+
+## Descripción
+
+En esta práctica se implementaron filtros dinámicos para la consulta de productos utilizando Spring Data JPA y consultas JPQL. Los filtros permiten realizar búsquedas flexibles mediante parámetros opcionales enviados desde la API REST.
+
+---
+
+## Objetivos
+
+- Implementar consultas dinámicas utilizando JPQL.
+- Permitir búsquedas por múltiples criterios.
+- Reducir la cantidad de consultas específicas en el repositorio.
+- Mejorar la flexibilidad de la API.
+- Mantener el uso de Soft Delete en todas las consultas.
+
+---
+
+## Funcionalidades implementadas
+
+- Filtrar productos por usuario propietario.
+- Filtrar productos por categoría.
+- Buscar productos por nombre.
+- Filtrar por precio mínimo.
+- Filtrar por precio máximo.
+- Combinar varios filtros en una misma consulta.
+- Mostrar únicamente productos activos (`deleted = false`).
+
+---
+
+## Endpoints implementados
+
+### Obtener productos de un usuario con filtros
+
+```http
+GET /api/products/user/{userId}
+```
+
+Parámetros opcionales:
+
+| Parámetro | Descripción |
+|-----------|-------------|
+| name | Nombre del producto |
+| minPrice | Precio mínimo |
+| maxPrice | Precio máximo |
+| categoryId | Categoría |
+
+Ejemplo:
+
+```http
+GET /api/products/user/1?name=laptop&minPrice=500&maxPrice=1500&categoryId=2
+```
+
+---
+
+### Obtener productos por categoría con filtros
+
+```http
+GET /api/products/category/{categoryId}
+```
+
+Parámetros opcionales:
+
+| Parámetro | Descripción |
+|-----------|-------------|
+| name | Nombre del producto |
+| minPrice | Precio mínimo |
+| maxPrice | Precio máximo |
+| userId | Propietario |
+
+Ejemplo:
+
+```http
+GET /api/products/category/2?name=mouse&userId=5&minPrice=20&maxPrice=100
+```
+
+---
+
+## Repositorio
+
+Se implementaron consultas JPQL utilizando `@Query` para soportar filtros opcionales mediante parámetros dinámicos.
+
+### Métodos implementados
+
+```java
+findByOwnerIdWithFilters(...)
+findByCategoryIdWithFilters(...)
+```
+
+Estas consultas permiten aplicar filtros solamente cuando los parámetros son enviados por el cliente.
+
+---
+
+## Evidencias
+
+### Consulta por usuario
+
+```http
+GET /api/products/user/1
+```
+
+Muestra todos los productos pertenecientes al usuario especificado.
+
+![POST](src/assets/CrearProductos09.png)
+
+![GET](/src/assets/UsuarioProductos09.png)
+---
+
+### Consulta por usuario con filtros
+
+```http
+GET /api/products/user/1?name=laptop&minPrice=500
+```
+
+Muestra únicamente los productos que cumplen los criterios enviados.
+
+![Min Price](/src/assets/MinPrice09.png)
+---
+
+### Consulta por categoría con filtros
+
+```http
+GET /api/products/category/2?userId=1&maxPrice=1000
+```
+
+Muestra los productos de la categoría indicada aplicando filtros adicionales.
+
+![Max Price](/src/assets/MaxPrice09.png)
+---
+
+## Resultado
+
+Se implementaron filtros dinámicos que permiten realizar consultas flexibles y reutilizables sobre los productos almacenados en la base de datos. La solución reduce la duplicación de código y mejora la capacidad de búsqueda dentro de la API REST.
+
+
+------------------------------------------------------------------------------------------------
 
 # Práctica 10 (Spring Boot): Paginación de Productos con Page, Slice y Pageable
 
@@ -832,7 +1131,242 @@ Al aplicar la paginación directamente en el repositorio mediante `Pageable`, Sp
 ---
 --------------------------------------------------------------------------------------
 
+# Práctica 11 - Autenticación con JWT y Spring Security
 
+
+---
+
+# Objetivo
+
+Implementar autenticación mediante Spring Security y JSON Web Token (JWT), permitiendo el registro e inicio de sesión de usuarios para proteger los endpoints de la API.
+
+---
+
+# Funcionalidades implementadas
+
+- Registro de usuarios.
+- Inicio de sesión.
+- Generación de JWT.
+- Protección de endpoints.
+- Roles ROLE_USER y ROLE_ADMIN.
+- Autenticación Stateless.
+- BCrypt para cifrado de contraseñas.
+
+---
+
+# Flujo de autenticación
+
+1. Registro del usuario.
+2. Contraseña cifrada con BCrypt.
+3. Inicio de sesión.
+4. Generación del JWT.
+5. Envío del token en Authorization Bearer.
+6. Validación automática mediante Spring Security.
+
+---
+
+# Pruebas realizadas
+
+## Prueba 1 - Registro
+
+```
+POST /auth/register
+```
+
+```json
+{
+  "name":"Cristina Loja",
+  "email":"cristina.test@ups.edu.ec",
+  "password":"Password123"
+}
+```
+
+Resultado esperado
+
+- 201 Created
+- Token JWT
+- ROLE_USER
+
+![Register](/src/assets/Register11.png)
+
+---
+
+## Prueba 2 - Login
+
+```
+POST /auth/login
+```
+
+```json
+{
+  "email":"cristina.test@ups.edu.ec",
+  "password":"Password123"
+}
+```
+
+Resultado esperado
+
+- 200 OK
+- JWT válido
+
+![Login](/src/assets/Login11.png)
+
+---
+
+## Prueba 3 - Endpoint protegido sin token
+
+```
+GET /products/page?page=0&size=5
+```
+
+Resultado esperado
+
+```
+401 Unauthorized
+```
+
+![Sin Token](/src/assets/SinToken11.png)
+
+---
+
+## Prueba 4 - Endpoint protegido con token
+
+```
+GET /products/page?page=0&size=5
+```
+
+Authorization
+
+```
+Bearer <token>
+```
+
+Resultado esperado
+
+```
+200 OK
+```
+
+![Con Token](/src/assets/ConToken11.png)
+
+---
+
+# Conclusiones
+
+La autenticación mediante JWT permitió proteger correctamente los recursos de la API. Spring Security valida automáticamente el token enviado por el cliente antes de permitir el acceso a los endpoints protegidos, implementando un modelo Stateless seguro y escalable.
+
+----------------------------------------------------------------------------------------------------
+
+# Práctica 12 - Autorización mediante Roles y @PreAuthorize
+
+---
+
+# Objetivo
+
+Implementar autorización basada en roles utilizando Spring Security y la anotación **@PreAuthorize**, restringiendo el acceso a determinados endpoints únicamente a usuarios con permisos de administrador.
+
+---
+
+# Funcionalidades implementadas
+
+- Protección mediante @PreAuthorize.
+- Roles ROLE_USER.
+- Roles ROLE_ADMIN.
+- Restricción del endpoint GET /products.
+- Manejo de errores 401 y 403.
+
+---
+
+# Flujo de autorización
+
+1. Usuario inicia sesión.
+2. Obtiene JWT.
+3. JWT contiene los roles.
+4. Spring Security valida el rol.
+5. Si posee ROLE_ADMIN puede acceder.
+6. Caso contrario devuelve 403 Forbidden.
+
+---
+
+# Pruebas realizadas
+
+## Prueba 1 - Usuario ROLE_USER
+
+```
+POST /auth/login
+```
+
+Resultado esperado
+
+![Role User](/src/assets/RoleUser12.png)
+
+---
+
+## Prueba 2 - ROLE_USER intenta acceder
+
+```
+GET /products
+```
+
+Authorization
+
+```
+Bearer <token ROLE_USER>
+```
+
+Resultado esperado
+
+```
+403 Forbidden
+```
+
+Mensaje esperado
+
+```
+No tienes permisos para acceder a este recurso
+```
+
+![Role User](/src/assets/IntentaAcceder12.png)
+
+---
+
+## Prueba 3 - Login con administrador
+
+```
+POST /auth/login
+```
+
+Resultado esperado
+
+![ROL ADMIN](/src/assets/RolAdmi12.png)
+---
+
+## Prueba 4 - Administrador consulta productos
+
+```
+GET /products
+```
+
+Authorization
+
+```
+Bearer <token ROLE_ADMIN>
+```
+
+Resultado esperado
+
+```
+200 OK
+```
+
+![Admin Consulta](/src/assets/ConsultaAdmin12.png)
+
+---
+
+
+# Conclusiones
+
+La implementación de autorización basada en roles permitió restringir el acceso a recursos sensibles de la API. Mediante la anotación **@PreAuthorize**, únicamente los usuarios con ROLE_ADMIN pueden acceder a los endpoints administrativos, mientras que los usuarios con ROLE_USER mantienen acceso únicamente a los recursos permitidos. Las pruebas realizadas confirmaron el correcto funcionamiento de los códigos HTTP 200, 401 y 403 según el nivel de autorización del usuario.
 
 ----------------------------------------------------------------------------------------
 
@@ -1051,5 +1585,12 @@ Esta práctica fortalece la seguridad de la API al combinar autenticación media
 
 ---
 
+## Autor
+
+**Cristina Loja**
+
+Ingeniería en Ciencias de la Computación
+
+Universidad Politécnica Salesiana
 
 
