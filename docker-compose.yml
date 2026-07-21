@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fundamentos01-app
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-dev:5432/devdb?useUnicode=true&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: ups
+      SPRING_DATASOURCE_PASSWORD: ups123
+    networks:
+      - fundamentos01-net
+
+networks:
+  fundamentos01-net:
+    external: true
+    

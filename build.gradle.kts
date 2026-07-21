@@ -13,6 +13,14 @@ java {
     }
 }
 
+tasks.bootJar {
+    archiveFileName.set("app.jar")
+}
+
+tasks.jar {
+    enabled = false
+}
+
 repositories {
     mavenCentral()
 }
@@ -35,6 +43,12 @@ dependencies {
 	implementation("io.jsonwebtoken:jjwt-api:0.12.6")
 	runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
 	runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
+
+
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+
 }
 
 tasks.withType<Test> {

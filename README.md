@@ -1585,6 +1585,1074 @@ Esta práctica fortalece la seguridad de la API al combinar autenticación media
 
 ---
 
+# Práctica 14 (Spring Boot): Renovación de Access Token con Refresh Token
+
+---
+
+## 1. Resumen
+
+En esta práctica se implementó un mecanismo de **refresh token** para permitir que los usuarios renueven su sesión sin necesidad de volver a autenticarse cada vez que expira el access token.
+
+Se implementó:
+
+- Diferenciación entre **access token** y **refresh token** mediante un claim `type` dentro del JWT.
+- Persistencia del refresh token en base de datos (tabla `refresh_tokens`), permitiendo revocarlo.
+- **Rotación** de refresh tokens: cada vez que se usa uno para renovar la sesión, queda revocado y se genera uno nuevo.
+- Endpoint `/auth/refresh` para renovar tokens.
+- Endpoint `/auth/logout` para cerrar sesión revocando el refresh token.
+- Rechazo explícito de refresh tokens cuando se intentan usar como access token en el header `Authorization`.
+
+---
+
+## 3. Endpoints
+
+| Método | Ruta                | Descripción                                   | Autenticación |
+| ------ | ------------------- | ---------------------------------------------- | -------------- |
+| POST   | `/api/auth/login`   | Inicia sesión, devuelve access + refresh token | Pública        |
+| POST   | `/api/auth/register`| Registra usuario, devuelve access + refresh    | Pública        |
+| POST   | `/api/auth/refresh` | Renueva tokens usando un refresh token válido  | Pública (valida refresh token en el body) |
+| POST   | `/api/auth/logout`  | Revoca un refresh token                        | Pública (valida refresh token en el body) |
+
+---
+
+## 4. Resultados y evidencias
+
+### 4.1. Login: devuelve access token y refresh token
+
+`POST /api/auth/login`
+
+```json
+{
+  "email": "usera@ups.edu.ec",
+  "password": "Password123"
+}
+```
+
+Respuesta real obtenida (`200 OK`):
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "userId": 13,
+  "name": "Usuario A",
+  "email": "usera@ups.edu.ec",
+  "roles": ["ROLE_USER"],
+  "type": "Bearer"
+}
+```
+
+Al decodificar cada JWT se confirma la diferenciación por claim `type`:
+
+- Access token → `"type": "access"`, expira en 30 minutos (`exp - iat = 1800`).
+- Refresh token → `"type": "refresh"`, expira en 7 días (`exp - iat = 604800`).
+
+![Login Token](RefreshToken16.png)
+
+---
+
+### 4.2. Endpoint protegido con access token
+
+`GET /api/products/page?page=0&size=5`
+`Authorization: Bearer <access-token>`
+
+Resultado: `200 OK` — el access token es aceptado normalmente por `JwtAuthenticationFilter`.
+
+![Access Token](AccessToken16.png)
+
+---
+
+### 4.3. Refresh token rechazado como access token
+
+`GET /api/products/page?page=0&size=5`
+`Authorization: Bearer <refresh-token>`
+
+Resultado: `401 Unauthorized`
+
+Esto confirma que `JwtAuthenticationFilter` usa `jwtUtil.validateAccessToken(jwt)`, el cual rechaza cualquier token cuyo claim `type` no sea `"access"`, incluso si la firma del JWT es válida.
+
+![Rechazado](RechazadoToken16.png)
+
+---
+
+### 4.4. Refresh exitoso
+
+`POST /api/auth/refresh`
+
+```json
+{
+  "refreshToken": "<refresh-token-del-login>"
+}
+```
+
+Respuesta real obtenida (`200 OK`):
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9... (nuevo access token)",
+  "refreshToken": "eyJhbGciOiJIUzI1NiJ9... (nuevo refresh token)",
+  "userId": 13,
+  "name": "Usuario A",
+  "email": "usera@ups.edu.ec",
+  "roles": ["ROLE_USER"],
+  "type": "Bearer"
+}
+```
+
+Se verificó que tanto el `token` como el `refreshToken` devueltos son **distintos** a los del login original (comparando el campo `iat` de cada JWT).
+
+![Auth Refresh](Auth16.png)
+
+---
+
+### 4.5. Rotación: el refresh token usado queda revocado
+
+Al intentar reutilizar el refresh token del login original (ya usado en el paso 4.4):
+
+`POST /api/auth/refresh`
+
+```json
+{
+  "refreshToken": "<refresh-token-ya-usado>"
+}
+```
+
+Respuesta real obtenida (`400 Bad Request`):
+
+```json
+{
+  "timestamp": "2026-07-15T17:23:04.459",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Refresh token no encontrado o revocado",
+  "path": "/api/auth/refresh"
+}
+```
+
+Esto confirma que `RefreshTokenService.revoke()` se ejecuta correctamente durante el refresh, invalidando el token anterior y evitando su reutilización.
+
+![Refresh](Refresh16.png)
+
+---
+
+### 4.6. Logout
+
+`POST /api/auth/logout`
+
+```json
+{
+  "refreshToken": "<refresh-token-actual>"
+}
+```
+
+Resultado: `204 No Content`
+
+![Logout](Logout16.png)
+
+---
+
+### 4.7. Refresh después de logout
+
+`POST /api/auth/refresh`
+
+```json
+{
+  "refreshToken": "<refresh-token-recien-cerrado>"
+}
+```
+
+Respuesta real obtenida (`400 Bad Request`):
+
+```json
+{
+  "timestamp": "2026-07-15T17:27:03.377",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Refresh token no encontrado o revocado",
+  "path": "/api/auth/refresh"
+}
+```
+
+Esto confirma que el logout revoca efectivamente el refresh token en base de datos, impidiendo que se use para renovar sesión posteriormente.
+
+![Refresh Logout](RefreshRevocado16.png)
+
+---
+
+## 5. Explicación breve
+
+### ¿Cuál es la diferencia entre access token y refresh token?
+
+El **access token** es el que se envía en cada petición HTTP dentro del header `Authorization: Bearer <token>` para acceder a endpoints protegidos. Tiene una duración corta (30 minutos en este proyecto) precisamente para limitar el daño si llegara a ser robado: aunque un atacante lo obtenga, dejará de ser útil pronto.
+
+El **refresh token**, en cambio, no se usa para acceder a recursos directamente. Su único propósito es solicitar un nuevo par de tokens cuando el access token expira, sin que el usuario tenga que volver a ingresar sus credenciales. Por eso dura mucho más (7 días en este proyecto), pero a cambio se controla de forma más estricta: se guarda en base de datos, se puede revocar en cualquier momento, y se rota cada vez que se usa.
+
+### ¿Por qué el refresh token no debe usarse en `Authorization: Bearer`?
+
+Porque el refresh token no está diseñado para autenticar peticiones a los recursos de la API, sino únicamente para el proceso de renovación. Si se aceptara indistintamente en cualquier endpoint, un token que debería vivir 7 días terminaría teniendo el mismo nivel de exposición que uno de 30 minutos, aumentando significativamente la ventana de riesgo en caso de robo. Por eso el JWT incluye un claim `type` (`access` o `refresh`), y `JwtAuthenticationFilter` valida explícitamente que solo los tokens de tipo `access` puedan autenticar peticiones normales, rechazando cualquier refresh token que se intente usar de esa forma con un `401 Unauthorized`.
+
+### ¿Qué significa rotar un refresh token?
+
+Rotar un refresh token significa que, cada vez que se utiliza para obtener un nuevo access token, ese mismo refresh token se invalida (revoca) inmediatamente y se genera uno completamente nuevo para reemplazarlo. Esto evita que un mismo refresh token pueda reutilizarse de forma indefinida: si alguien intentara usarlo por segunda vez —por ejemplo, porque fue interceptado— la petición sería rechazada porque el sistema ya lo marcó como revocado en la base de datos. La rotación limita el impacto de un posible robo de refresh token a un solo uso.
+
+---
+
+## 6. Consideraciones de seguridad aplicadas
+
+- El refresh token se guarda en la tabla `refresh_tokens`, lo que permite revocarlo de forma controlada (logout) sin depender únicamente de su expiración natural.
+- Al iniciar sesión, se revocan todos los refresh tokens anteriores del usuario (`revokeAllByUser`), dejando una única sesión activa por usuario.
+- Se valida que el usuario dueño del refresh token siga activo (`!deleted`) antes de emitir nuevos tokens.
+- El endpoint `/auth/refresh` no depende del `JwtAuthenticationFilter` estándar; la validación del refresh token ocurre explícitamente en `RefreshTokenService.validateAndGetActiveToken()`.
+
+---
+
+
+# Práctica 15: Documentación de API con Swagger, OpenAPI y Seguridad JWT
+
+---
+
+# Dependencia utilizada
+
+Para integrar Swagger en Spring Boot se agregó la dependencia de Springdoc OpenAPI en el archivo:
+
+```text
+build.gradle.kts
+```
+
+Configuración agregada:
+
+```kotlin
+implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
+```
+
+Esta librería permite generar automáticamente la documentación OpenAPI a partir de los controladores, DTOs y configuraciones de seguridad del proyecto.
+
+---
+
+# Configuración de Swagger UI
+
+La aplicación utiliza un contexto base `/api`, por lo que las rutas principales son:
+
+Swagger UI:
+
+```text
+http://localhost:8081/api/swagger-ui/index.html
+```
+
+Documentación OpenAPI:
+
+```text
+http://localhost:8081/api/v3/api-docs
+```
+
+La interfaz Swagger permite visualizar todos los controladores disponibles y realizar pruebas directamente desde el navegador.
+
+---
+
+# Configuración de Spring Security
+
+Debido a que el proyecto utiliza Spring Security con autenticación JWT, fue necesario permitir el acceso público a Swagger.
+
+En la configuración de seguridad se agregaron las siguientes rutas:
+
+```java
+.requestMatchers(
+        "/swagger-ui/**",
+        "/swagger-ui.html",
+        "/v3/api-docs/**"
+).permitAll()
+```
+
+No se agregó `/api` dentro de los `requestMatchers`, debido a que Spring Security evalúa las rutas internas sin considerar el contexto del servlet.
+
+Después de esta configuración Swagger puede abrirse sin autenticación.
+
+Los endpoints protegidos continúan solicitando un token JWT válido.
+
+---
+
+# Configuración OpenAPI
+
+Se creó una configuración personalizada para Swagger mediante la clase:
+
+```text
+OpenApiConfig.java
+```
+
+Esta configuración permite definir:
+
+- Nombre de la API.
+- Versión.
+- Descripción.
+- Servidor base.
+- Esquema de autenticación JWT.
+
+Configuración del esquema Bearer JWT:
+
+```java
+SecurityScheme bearerScheme = new SecurityScheme()
+        .name("bearerAuth")
+        .type(SecurityScheme.Type.HTTP)
+        .scheme("bearer")
+        .bearerFormat("JWT");
+```
+
+Esta configuración habilita el botón:
+
+```text
+Authorize
+```
+
+en Swagger UI.
+
+---
+
+# Uso de JWT en Swagger
+
+Para probar endpoints protegidos se realizó el siguiente procedimiento:
+
+1. Ejecutar el endpoint de login:
+
+```http
+POST /api/auth/login
+```
+
+2. Ingresar las credenciales del usuario.
+
+Ejemplo:
+
+```json
+{
+    "email": "cristina.docker@ups.edu.ec",
+    "password": "********"
+}
+```
+
+3. La API devuelve un Access Token y Refresh Token.
+
+Ejemplo:
+
+```json
+{
+    "token": "eyJhbGciOiJIUzI1NiJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
+    "userId": 1,
+    "name": "Cristina",
+    "email": "cristina.docker@ups.edu.ec",
+    "roles": [
+        "ROLE_USER"
+    ],
+    "type": "Bearer"
+}
+```
+
+4. Copiar solamente el valor del token.
+
+Correcto:
+
+```text
+eyJhbGciOiJIUzI1NiJ9...
+```
+
+Incorrecto:
+
+```text
+"token":"eyJhbGciOiJIUzI1NiJ9..."
+```
+
+5. Presionar el botón:
+
+```text
+Authorize
+```
+
+6. Ingresar:
+
+```text
+Bearer TOKEN
+```
+
+Swagger enviará automáticamente:
+
+```http
+Authorization: Bearer TOKEN
+```
+
+en los endpoints protegidos.
+
+---
+
+# Documentación de endpoints
+
+Swagger permitió documentar los diferentes módulos de la aplicación.
+
+Controladores disponibles:
+
+## Auth
+
+Endpoints públicos:
+
+```text
+POST /api/auth/register
+POST /api/auth/login
+```
+
+Estos endpoints no requieren token porque permiten crear usuarios e iniciar sesión.
+
+---
+
+## Products
+
+Endpoints protegidos mediante JWT:
+
+```text
+GET /api/products
+GET /api/products/page
+GET /api/products/slice
+POST /api/products
+PUT /api/products/{id}
+DELETE /api/products/{id}
+```
+
+Para consumir estos endpoints es necesario enviar un token válido.
+
+---
+
+# Documentación mediante anotaciones
+
+Se utilizaron anotaciones de OpenAPI para mejorar la información mostrada en Swagger.
+
+Ejemplo:
+
+```java
+@Operation(
+        summary = "Crear producto",
+        description = "Crea un producto asociado al usuario autenticado."
+)
+```
+
+También se documentaron respuestas HTTP:
+
+```java
+@ApiResponses(value = {
+        @ApiResponse(
+                responseCode = "201",
+                description = "Producto creado correctamente"
+        ),
+        @ApiResponse(
+                responseCode = "401",
+                description = "Token inválido"
+        )
+})
+```
+
+---
+
+# Documentación de DTOs
+
+Los DTOs fueron documentados mediante:
+
+```java
+@Schema
+```
+
+Ejemplo:
+
+```java
+@Schema(
+        description = "Correo del usuario",
+        example = "usuario@ups.edu.ec"
+)
+private String email;
+```
+
+Esto permite que Swagger muestre información más clara sobre los datos requeridos.
+
+---
+
+# Pruebas realizadas
+
+## Prueba de Swagger UI
+
+Se verificó el acceso mediante:
+
+```text
+http://localhost:8081/api/swagger-ui/index.html
+```
+
+Resultado:
+
+Swagger cargó correctamente mostrando los controladores y endpoints disponibles.
+
+---
+
+## Prueba de documentación OpenAPI
+
+Se verificó:
+
+```text
+http://localhost:8081/api/v3/api-docs
+```
+
+Resultado:
+
+Se obtuvo correctamente el documento JSON generado por OpenAPI.
+
+---
+
+## Prueba de login mediante Bruno
+
+Se realizaron pruebas usando Bruno API Client.
+
+Solicitud:
+
+```http
+POST /api/auth/login
+```
+
+Cuando las credenciales fueron incorrectas se obtuvo:
+
+```json
+{
+    "error": "Unauthorized",
+    "message": "Email o contraseña incorrectos",
+    "status":401
+}
+```
+
+Cuando las credenciales fueron correctas se obtuvo:
+
+```json
+{
+    "token": "JWT_TOKEN",
+    "refreshToken": "REFRESH_TOKEN",
+    "userId":1,
+    "name":"Cristina",
+    "email":"cristina.docker@ups.edu.ec",
+    "roles":[
+        "ROLE_USER"
+    ],
+    "type":"Bearer"
+}
+```
+
+---
+
+# Verificación del estado de la API
+
+Se utilizó Spring Boot Actuator para comprobar que la aplicación estaba funcionando correctamente.
+
+Comando utilizado:
+
+```bash
+curl http://localhost:8081/api/actuator/health
+```
+
+Respuesta obtenida:
+
+```json
+{
+    "groups": [
+        "liveness",
+        "readiness"
+    ],
+    "status": "UP"
+}
+```
+
+El estado UP confirma que la API está ejecutándose correctamente.
+
+---
+
+# Evidencias realizadas
+
+Durante la práctica se obtuvieron las siguientes evidencias:
+
+## Swagger UI cargado
+
+Ruta:
+
+```text
+http://localhost:8081/api/swagger-ui/index.html
+```
+
+Se evidencia:
+
+- Controladores disponibles.
+- Endpoints agrupados.
+- Documentación automática.
+
+![Swagger UI cargado](swaggerUI.png)
+
+---
+
+## JSON OpenAPI
+
+Ruta:
+
+```text
+http://localhost:8081/api/v3/api-docs
+```
+
+Se evidencia:
+
+- Información OpenAPI.
+- Paths.
+- Componentes.
+- Schemas.
+
+![JSON OpenApi](JSON.png)
+
+---
+
+## Captura de AuthController documentado
+
+- POST /api/auth/register
+- POST /api/auth/login
+- descripciones de endpoints
+
+![Login](AuthController.png)
+
+---
+
+## Captura del botón Authorize
+
+- bearerAuth
+- JWT
+
+![Btn Authorize](Authorize.png)
+
+---
+
+## Captura de endpoint ADMIN con usuario normal
+Endpoint:
+
+GET /api/products
+Usar token con:
+
+ROLE_USER
+Debe evidenciar:
+
+403 Forbidden
+
+![Endpoint Usario Normal](UsuarioNormal.png)
+
+---
+
+## Captura de endpoint ADMIN con usuario administrador
+Endpoint:
+
+GET /api/products
+Usar token con:
+
+ROLE_ADMIN
+Debe evidenciar:
+
+200 OK
+
+![Endpoint ADMIN](ADMINEndpoint.png)
+
+---
+
+## Endpoint protegido con JWT
+
+Se verificó el acceso a endpoints protegidos utilizando el token generado.
+
+Sin token:
+
+```text
+401 Unauthorized
+```
+
+Con token válido:
+
+```text
+200 OK
+```
+
+![Edpoint Protegido](JWT.png)
+
+---
+
+# Preguntas finales
+
+## ¿Cuál es la diferencia entre Swagger UI y OpenAPI?
+
+OpenAPI es una especificación estándar utilizada para describir una API REST mediante información como rutas, métodos HTTP, parámetros, respuestas y seguridad.
+
+Swagger UI es una herramienta visual que utiliza esa información OpenAPI para mostrar una interfaz donde los desarrolladores pueden consultar y probar los endpoints.
+
+---
+
+## ¿Por qué Swagger puede ser público pero los endpoints seguir protegidos?
+
+Swagger solamente representa la documentación de la API. Permitir el acceso a la interfaz no significa permitir el acceso a los recursos protegidos.
+
+Los endpoints continúan protegidos mediante Spring Security y JWT, por lo que requieren autenticación cuando corresponde.
+
+---
+
+## ¿Cómo se configura Swagger para enviar un JWT en Authorization Bearer?
+
+Se configura un esquema de seguridad Bearer dentro de OpenAPI utilizando:
+
+```java
+SecurityScheme.Type.HTTP
+.scheme("bearer")
+.bearerFormat("JWT")
+```
+
+Luego Swagger permite ingresar el token mediante el botón Authorize y automáticamente agrega:
+
+```http
+Authorization: Bearer TOKEN
+```
+
+en las solicitudes realizadas contra endpoints protegidos.
+
+---
+
+# Conclusión
+
+La API REST quedó documentada utilizando Swagger y OpenAPI, permitiendo consultar y probar los endpoints desde una interfaz gráfica.
+
+Además, se integró correctamente la autenticación JWT dentro de Swagger, logrando proteger los recursos privados y mantener disponibles los endpoints públicos como registro y login.
+
+La documentación generada facilita el desarrollo, pruebas y mantenimiento del backend.
+
+---------------------------------------------------------------------------------------------------
+
+# Práctica 16: Despliegue portable de Spring Boot con Docker y Nginx en Ubuntu Server
+
+## Objetivo
+
+El objetivo de esta práctica fue realizar el despliegue de una aplicación Spring Boot utilizando Docker en un servidor Ubuntu, configurando variables de entorno, contenedores independientes y Nginx como proxy inverso.
+
+La implementación permite ejecutar la misma imagen Docker en diferentes ambientes sin modificar el código fuente, separando la configuración de la aplicación mediante variables de entorno.
+
+## Arquitectura implementada
+
+La arquitectura final utilizada fue la siguiente:
+
+```
+Windows (máquina anfitriona)
+          |
+          | HTTP
+          |
+Ubuntu Server (VirtualBox)
+          |
+          |
+       Nginx :80
+          |
+          |
+Spring Boot API :8081
+          |
+          |
+   PostgreSQL :5432
+```
+
+Los servicios utilizados fueron:
+
+- Ubuntu Server 24.04
+- Docker Engine
+- Spring Boot API
+- PostgreSQL 16
+- Nginx Alpine
+- VirtualBox
+
+---
+
+# 1. Contenedores Docker ejecutándose
+
+Después de configurar los servicios se verificó que los contenedores se encuentren activos mediante el comando:
+
+```bash
+docker ps
+```
+
+Resultado obtenido:
+
+```
+CONTAINER ID   IMAGE                    STATUS
+nginx          nginx:alpine             Up
+fundamentos-api-test fundamentos-api:1.0 Up
+postgres-dev   postgres:16              Up
+```
+
+Los contenedores utilizados fueron:
+
+- nginx: encargado de recibir las solicitudes HTTP.
+- fundamentos-api-test: contenedor donde se ejecuta la aplicación Spring Boot.
+- postgres-dev: contenedor encargado de la base de datos PostgreSQL.
+
+Evidencia:
+
+![Contenedores ejecutándose](docker-ps.png)
+
+---
+
+# 2. Configuración de red Docker
+
+Se creó una red privada para permitir la comunicación entre los contenedores:
+
+```bash
+docker network ls
+```
+
+Resultado:
+
+```
+app-network
+bridge
+host
+none
+```
+
+La aplicación Spring Boot fue conectada a la red:
+
+```
+app-network
+```
+
+La verificación se realizó con:
+
+```bash
+docker inspect fundamentos-api-test
+```
+
+Esta configuración permite que los contenedores puedan comunicarse utilizando la red interna de Docker.
+
+---
+
+# 3. Configuración de reinicio automático
+
+Para mantener los servicios disponibles después de reiniciar Ubuntu Server se configuró una política de reinicio automático:
+
+```bash
+docker update --restart unless-stopped nginx
+
+docker update --restart unless-stopped fundamentos-api-test
+
+docker update --restart unless-stopped postgres-dev
+```
+
+Con esta configuración los contenedores vuelven a iniciar automáticamente cuando Docker se inicia nuevamente.
+
+---
+
+# 4. Configuración de Nginx como proxy inverso
+
+Se utilizó Nginx para recibir las solicitudes HTTP y redirigirlas hacia la API Spring Boot.
+
+Archivo utilizado:
+
+```
+nginx/default.conf
+```
+
+Configuración principal:
+
+```nginx
+upstream spring_backend {
+    server fundamentos-api-test:8081;
+}
+
+server {
+
+    listen 80;
+
+    location = / {
+        default_type text/plain;
+        return 200 "Nginx activo\n";
+    }
+
+    location /api/ {
+
+        proxy_pass http://spring_backend;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+
+    }
+}
+```
+
+La configuración fue validada mediante:
+
+```bash
+docker exec nginx nginx -t
+```
+
+Resultado:
+
+```
+syntax is ok
+test is successful
+```
+
+Evidencia:
+
+![Configuración Nginx](nginx.png)
+
+---
+
+# 5. Prueba de funcionamiento de Nginx
+
+Desde Ubuntu Server se realizó la prueba:
+
+```bash
+curl http://localhost
+```
+
+Respuesta obtenida:
+
+```
+Nginx activo
+```
+
+Esto confirmó que el servidor Nginx se encuentra funcionando correctamente.
+
+---
+
+# 6. Validación del estado de la API Spring Boot
+
+Se realizó la prueba del endpoint Actuator mediante:
+
+```bash
+curl http://localhost/api/actuator/health
+```
+
+Respuesta obtenida:
+
+```json
+{
+  "groups": [
+    "liveness",
+    "readiness"
+  ],
+  "status": "UP"
+}
+```
+
+El resultado confirma que la aplicación Spring Boot se encuentra ejecutándose correctamente detrás del servidor Nginx.
+
+Evidencia:
+
+![Health desde Ubuntu](health-ubuntu.png)
+
+---
+
+# 7. Prueba desde la máquina anfitriona Windows
+
+Para comprobar la comunicación externa se accedió desde Windows mediante el navegador:
+
+```
+http://localhost/api/actuator/health
+```
+
+La respuesta obtenida fue:
+
+```json
+{
+  "groups": [
+    "liveness",
+    "readiness"
+  ],
+  "status": "UP"
+}
+```
+
+Esta prueba permitió verificar la comunicación completa entre Windows, Ubuntu Server, Nginx y Spring Boot.
+
+Evidencia:
+
+![Health desde Windows](health-windows.png)
+
+---
+
+# 8. Prueba de autenticación mediante Bruno
+
+Se realizó una prueba de autenticación utilizando Bruno mediante el endpoint:
+
+```
+POST /api/auth/login
+```
+
+Al enviar las credenciales correctas se obtuvo una respuesta con el token JWT:
+
+```json
+{
+  "token": "JWT_ACCESS_TOKEN",
+  "refreshToken": "JWT_REFRESH_TOKEN",
+  "userId": 1,
+  "name": "Cristina",
+  "email": "cristina.docker@ups.edu.ec",
+  "roles": [
+    "ROLE_USER"
+  ],
+  "type": "Bearer"
+}
+```
+
+La prueba confirmó el correcto funcionamiento de:
+
+- Autenticación de usuarios.
+- Generación de Access Token.
+- Generación de Refresh Token.
+- Manejo de roles mediante Spring Security.
+
+Evidencia:
+
+![Login Bruno](bruno-login.png)
+
+---
+
+# 9. Resultado final del despliegue
+
+La implementación final quedó funcionando con el siguiente flujo:
+
+```
+Cliente Windows
+
+        |
+        |
+        v
+
+Nginx Docker
+Puerto 80
+
+        |
+        |
+        v
+
+Spring Boot API
+Puerto 8081
+
+        |
+        |
+        v
+
+PostgreSQL
+Puerto 5432
+```
+
+La aplicación quedó desplegada de manera portable utilizando Docker, permitiendo separar la configuración del código y facilitando futuros despliegues en otros ambientes.
+
+---
+
+# Conclusiones
+
+Durante esta práctica se logró desplegar una API Spring Boot dentro de un entorno Docker en Ubuntu Server.
+
+Se configuró Nginx como proxy inverso para administrar las solicitudes HTTP y comunicar la máquina anfitriona con la aplicación desplegada.
+
+Además, se verificó el correcto funcionamiento de la aplicación mediante pruebas con Actuator, navegador web y Bruno, comprobando que la autenticación JWT, la conexión con PostgreSQL y los servicios Docker funcionan correctamente.
+
+La separación de configuración mediante variables de entorno permite reutilizar la misma imagen Docker en diferentes ambientes sin necesidad de modificar el código fuente.
+
+---
+
+
 ## Autor
 
 **Cristina Loja**

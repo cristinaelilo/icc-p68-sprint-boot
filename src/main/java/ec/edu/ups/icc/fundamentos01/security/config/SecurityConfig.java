@@ -67,11 +67,20 @@ public class SecurityConfig {
             )
 
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**").permitAll()
-                .requestMatchers("/status/**").permitAll()
-                .requestMatchers("/actuator/**").permitAll()
-                .anyRequest().authenticated()
-            );
+            .requestMatchers("/auth/**").permitAll()
+            .requestMatchers("/status/**").permitAll()
+            // .requestMatchers("/actuator/**").permitAll()
+            .requestMatchers("/actuator/health").permitAll()
+
+            // Swagger
+            .requestMatchers(
+                "/swagger-ui/**",
+                "/v3/api-docs/**",
+                "/swagger-ui.html"
+            ).permitAll()
+
+            .anyRequest().authenticated()
+        );
 
         http.authenticationProvider(authenticationProvider());
 
